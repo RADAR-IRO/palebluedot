@@ -1,7 +1,9 @@
+#!/usr/bin/env python3
 import numpy as np
 from PIL import Image
 import scipy.signal
 import scipy.io
+import sys
 
 
 line_width = 1040
@@ -41,7 +43,7 @@ def find_syncs(levels, sync_signal):
     return peaks
 
 
-def decode_image(levels, syncs, samples_per_second):
+def image_from_signal(levels, syncs, samples_per_second):
     start = syncs[0]
     end = syncs[-1]
 
@@ -59,15 +61,30 @@ def decode_image(levels, syncs, samples_per_second):
     return Image.fromarray(data.astype("uint8"))
 
 
-samples_per_second, signal = read_signal("noaa15-2023-04-05-19h14.wav")
-samples_per_symbol = samples_per_second / (line_width * lines_per_second)
+def decode(input_path):
+    samples_per_second, signal = read_signal(input_path)
+    samples_per_symbol = samples_per_second / (line_width * lines_per_second)
 
-levels = amplitude_demod(signal)
+    levels = amplitude_demod(signal)
 
-sync_a_signal = gen_sync_signal(sync_a_pattern, samples_per_symbol)
-syncs_a = find_syncs(levels, sync_a_signal)
-decode_image(levels, syncs_a, samples_per_second).save("output_a.png")
+    sync_a_signal = gen_sync_signal(sync_a_pattern, samples_per_symbol)
+    syncs_a = find_syncs(levels, sync_a_signal)
+    image_a = image_from_signal(levels, syncs_a, samples_per_second)
 
-sync_b_signal = gen_sync_signal(sync_b_pattern, samples_per_symbol)
-syncs_b = find_syncs(levels, sync_b_signal)
-decode_image(levels, syncs_b, samples_per_second).save("output_b.png")
+    sync_b_signal = gen_sync_signal(sync_b_pattern, samples_per_symbol)
+    syncs_b = find_syncs(levels, sync_b_signal)
+    image_b = image_from_signal(levels, syncs_b, samples_per_second)
+
+    return image_a, image_b
+
+
+if __name__ == "__main__":
+    if len(sys.argv) <= 1:
+        print(f"Usage: {sys.argv[0]} [input file]")
+        sys.exit(1)
+
+    input_path = sys.argv[1]
+    base_path = input_path.removesuffix(".wav")
+    image_a, image_b = decode(input_path)
+    image_a.save(base_path + "_a.png")
+    image_b.save(base_path + "_b.png")
