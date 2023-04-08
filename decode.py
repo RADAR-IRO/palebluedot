@@ -4,6 +4,7 @@ from PIL import Image
 import scipy.signal
 import scipy.io
 import sys
+import logging
 
 
 line_width = 1040
@@ -65,15 +66,20 @@ def decode(input_path):
     samples_per_second, signal = read_signal(input_path)
     samples_per_symbol = samples_per_second / (line_width * lines_per_second)
 
+    logging.info("Demodulating signal")
     levels = amplitude_demod(signal)
 
+    logging.info("Finding syncs for channel A")
     sync_a_signal = gen_sync_signal(sync_a_pattern, samples_per_symbol)
     syncs_a = find_syncs(levels, sync_a_signal)
     image_a = image_from_signal(levels, syncs_a, samples_per_second)
+    logging.info("Decoding channel A")
 
+    logging.info("Finding syncs for channel B")
     sync_b_signal = gen_sync_signal(sync_b_pattern, samples_per_symbol)
     syncs_b = find_syncs(levels, sync_b_signal)
     image_b = image_from_signal(levels, syncs_b, samples_per_second)
+    logging.info("Decoding channel B")
 
     return image_a, image_b
 
@@ -83,8 +89,11 @@ if __name__ == "__main__":
         print(f"Usage: {sys.argv[0]} [input file]")
         sys.exit(1)
 
+    logging.basicConfig(format='[%(asctime)s] %(message)s', level=logging.INFO)
     input_path = sys.argv[1]
     base_path = input_path.removesuffix(".wav")
     image_a, image_b = decode(input_path)
+
+    logging.info(f"Saving images to {base_path}_*.png")
     image_a.save(base_path + "_a.png")
     image_b.save(base_path + "_b.png")
