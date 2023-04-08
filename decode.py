@@ -14,8 +14,8 @@ sync_b_pattern = "000011100111001110011100111001110011100"
 
 
 def read_signal(path):
-    rate, data = scipy.io.wavfile.read(path)
-    return rate, data.mean(axis=1)
+    rate, signal = scipy.io.wavfile.read(path)
+    return rate, signal.mean(axis=1)
 
 
 def amplitude_demod(signal):
@@ -32,54 +32,53 @@ def gen_sync_signal(pattern, samples_per_symbol):
     return sampled_pattern * 256
 
 
-def find_syncs(levels, sync_signal):
+def find_syncs(levels, sync_signal, samples_per_symbol):
     corr = np.correlate(levels - 128, sync_signal - 128)
-    corr = corr / np.max(corr) * 256
+    corr = corr / np.max(corr)
     peaks, _ = scipy.signal.find_peaks(
         corr,
-        width=20,
-        height=100,
-        distance=20000,
+        height=.5,
+        distance=samples_per_symbol * line_width,
     )
     return peaks
 
 
-def image_from_signal(levels, syncs, samples_per_second):
-    start = syncs[0]
-    end = syncs[-1]
+def image_from_signal(levels, syncs, samples_per_symbol):
+    first_sync = syncs[0]
+    last_sync = syncs[-1]
 
-    samples_per_symbol = samples_per_second / (line_width * lines_per_second)
-    sync_dist = samples_per_second / lines_per_second * 2
+    line_width_samples = round(line_width * samples_per_symbol)
+    sync_dist = round(line_width * samples_per_symbol * 2)
 
-    lines = int((end - start) / sync_dist)
+    lines = int((last_sync - first_sync) / sync_dist)
     data = np.zeros((lines + 1, line_width))
 
-    for peak in syncs:
-        y = int((peak - start) / sync_dist)
-        line = levels[peak:peak + round(line_width * samples_per_symbol)]
+    for sync in syncs:
+        y = int((sync - first_sync) / sync_dist)
+        line = levels[sync : sync + line_width_samples]
         data[y] = scipy.signal.resample(line, num=line_width)
 
     return Image.fromarray(data.astype("uint8"))
 
 
 def decode(input_path):
-    samples_per_second, signal = read_signal(input_path)
-    samples_per_symbol = samples_per_second / (line_width * lines_per_second)
+    rate, signal = read_signal(input_path)
+    samples_per_symbol = rate / (line_width * lines_per_second)
 
     logging.info("Demodulating signal")
     levels = amplitude_demod(signal)
 
     logging.info("Finding syncs for channel A")
     sync_a_signal = gen_sync_signal(sync_a_pattern, samples_per_symbol)
-    syncs_a = find_syncs(levels, sync_a_signal)
-    image_a = image_from_signal(levels, syncs_a, samples_per_second)
+    syncs_a = find_syncs(levels, sync_a_signal, samples_per_symbol)
     logging.info("Decoding channel A")
+    image_a = image_from_signal(levels, syncs_a, samples_per_symbol)
 
     logging.info("Finding syncs for channel B")
     sync_b_signal = gen_sync_signal(sync_b_pattern, samples_per_symbol)
-    syncs_b = find_syncs(levels, sync_b_signal)
-    image_b = image_from_signal(levels, syncs_b, samples_per_second)
+    syncs_b = find_syncs(levels, sync_b_signal, samples_per_symbol)
     logging.info("Decoding channel B")
+    image_b = image_from_signal(levels, syncs_b, samples_per_symbol)
 
     return image_a, image_b
 
