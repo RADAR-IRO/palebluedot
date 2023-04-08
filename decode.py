@@ -26,18 +26,18 @@ def amplitude_demod(signal):
 def gen_sync_signal(pattern, samples_per_symbol):
     length = int(samples_per_symbol * len(pattern))
     sampled_pattern = np.array([
-        int((pattern + "0")[round(i / samples_per_symbol)])
+        int((pattern + "0")[round(i / samples_per_symbol)]) - 0.5
         for i in range(length)
     ])
-    return sampled_pattern * 256
+    return sampled_pattern
 
 
 def find_syncs(levels, sync_signal, samples_per_symbol):
-    corr = np.correlate(levels - 128, sync_signal - 128)
+    corr = np.correlate(levels - 128, sync_signal)
     corr = corr / np.max(corr)
     peaks, _ = scipy.signal.find_peaks(
         corr,
-        height=.5,
+        height=.75,
         distance=samples_per_symbol * line_width,
     )
     return peaks
