@@ -9,6 +9,7 @@ import logging
 
 line_width = 1040
 lines_per_second = 4
+carrier_frequency = 2400
 sync_a_pattern = "000011001100110011001100110011000000000"
 sync_b_pattern = "000011100111001110011100111001110011100"
 
@@ -18,8 +19,15 @@ def read_signal(path):
     return rate, signal.mean(axis=1)
 
 
-def amplitude_demod(signal):
-    envelope = np.abs(scipy.signal.hilbert(signal))
+def amplitude_demod(signal, rate):
+    lowpass = scipy.signal.butter(
+        N=5,
+        Wn=carrier_frequency * 1.1,
+        btype="lowpass",
+        output="sos",
+        fs=rate,
+    )
+    envelope = (scipy.signal.sosfilt(lowpass, signal ** 2).clip(0) * 2) ** 0.5
     return (envelope * 256 / 6000).clip(0, 255).astype("int")
 
 
@@ -66,7 +74,7 @@ def decode(input_path):
     samples_per_symbol = rate / (line_width * lines_per_second)
 
     logging.info("Demodulating signal")
-    levels = amplitude_demod(signal)
+    levels = amplitude_demod(signal, rate)
 
     logging.info("Finding syncs for channel A")
     sync_a_signal = gen_sync_signal(sync_a_pattern, samples_per_symbol)
