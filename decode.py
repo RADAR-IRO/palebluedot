@@ -16,7 +16,11 @@ sync_b_pattern = "000011100111001110011100111001110011100"
 
 def read_signal(path):
     rate, signal = scipy.io.wavfile.read(path)
-    return rate, signal.mean(axis=1)
+
+    if len(signal.shape) == 2:
+        signal = signal.mean(axis=1)
+
+    return rate, signal.astype("float")
 
 
 def amplitude_demod(signal, rate):
