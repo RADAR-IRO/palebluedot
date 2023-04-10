@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image
 import scipy.signal
 import scipy.io
+from xcorr import correlate_template
 import sys
 import logging
 
@@ -31,25 +32,22 @@ def amplitude_demod(signal, rate):
         output="sos",
         fs=rate,
     )
-    envelope = (scipy.signal.sosfilt(lowpass, signal ** 2).clip(0) * 2) ** 0.5
-    return (envelope * 256 / 6000).clip(0, 255).astype("int")
+    return (scipy.signal.sosfilt(lowpass, signal ** 2).clip(0) * 2) ** 0.5
 
 
 def gen_sync_signal(pattern, samples_per_symbol):
     length = int(samples_per_symbol * len(pattern))
-    sampled_pattern = np.array([
-        int((pattern + "0")[round(i / samples_per_symbol)]) - 0.5
+    return np.array([
+        int((pattern + "0")[round(i / samples_per_symbol)])
         for i in range(length)
     ])
-    return sampled_pattern
 
 
 def find_syncs(levels, sync_signal, samples_per_symbol):
-    corr = np.correlate(levels - 128, sync_signal)
-    corr = corr / np.max(corr)
+    corr = correlate_template(levels, sync_signal)
     peaks, _ = scipy.signal.find_peaks(
         corr,
-        height=.75,
+        height=.5,
         distance=samples_per_symbol * line_width,
     )
     return peaks
@@ -63,17 +61,18 @@ def image_from_signal(levels, syncs, samples_per_symbol):
     sync_dist = round(line_width * samples_per_symbol * 2)
 
     lines = int((last_sync - first_sync) / sync_dist)
-    data = np.zeros((lines + 1, line_width))
+    data = np.zeros((lines + 1, line_width), dtype="float")
 
     for sync in syncs:
         y = int((sync - first_sync) / sync_dist)
         line = levels[sync : sync + line_width_samples]
         data[y] = scipy.signal.resample(line, num=line_width)
 
-    return Image.fromarray(data.astype("uint8"))
+    return Image.fromarray((data / 6000 * 255).round().clip(0, 255).astype("uint8"))
 
 
 def decode(input_path):
+    logging.info("Loading file")
     rate, signal = read_signal(input_path)
     samples_per_symbol = rate / (line_width * lines_per_second)
 
