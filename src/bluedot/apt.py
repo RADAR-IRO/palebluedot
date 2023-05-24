@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
 import numpy as np
 from PIL import Image
 import scipy.signal
 import scipy.io
-from xcorr import correlate_template
-import sys
 import logging
+from .xcorr import correlate_template
 
 
 # Number of symbols in a complete APT line
@@ -141,21 +139,3 @@ def apt_decode(rate, signal):
         channels.append(image_from_signal(levels, syncs, samples_per_symbol))
 
     return channels
-
-
-if __name__ == "__main__":
-    if len(sys.argv) <= 1:
-        print(f"Usage: {sys.argv[0]} [input file]")
-        sys.exit(1)
-
-    logging.basicConfig(format='[%(asctime)s] %(message)s', level=logging.INFO)
-    input_path = sys.argv[1]
-    base_path = input_path.removesuffix(".wav")
-
-    logging.info("Loading file")
-    rate, signal = read_signal(input_path)
-    image_a, image_b = apt_decode(rate, signal)
-
-    logging.info(f"Saving images to {base_path}_*.png")
-    image_a.save(base_path + "_a.png")
-    image_b.save(base_path + "_b.png")
