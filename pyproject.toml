@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bluedot"
-version = "0.0.1"
+name = "palebluedot"
+version = "0.0.2"
 dependencies = [
     "scipy",
     "numpy",
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-bluedot = "bluedot.cli:run"
+palebluedot = "palebluedot.cli:run"
 
 [tool.hatch.build]
-packages = ["src/bluedot"]
+packages = ["src/palebluedot"]
