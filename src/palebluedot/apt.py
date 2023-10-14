@@ -1,3 +1,4 @@
+import math 
 import numpy as np
 from PIL import Image
 import scipy.signal
@@ -15,11 +16,36 @@ lines_per_second = 4
 # Carrier frequency used to transmit the signal
 carrier_frequency = 2400
 
-# Synchronization pattern for channel A
-sync_a_pattern = "000011001100110011001100110011000000000"
 
-# Synchronization pattern for channel B
-sync_b_pattern = "000011100111001110011100111001110011100"
+def gen_sync_signal(pattern, samples_per_symbol):
+    """
+    Generate a square synchronization signal from a pattern.
+
+    :param pattern: binary synchronization pattern.
+    :param samples_per_symbol: number of samples for each sync symbol.
+    :return: generated synchronization signal.
+    """
+    length = int(samples_per_symbol * len(pattern))
+    return np.array([
+        int((pattern + "0")[math.floor(i / samples_per_symbol)])
+        for i in range(length)
+    ])
+
+
+# Synchronization pattern for start of line in channel A
+sync_a_pattern = "0011001100110011001100110011000000000"
+
+# Synchronization pattern for start of line in channel B
+sync_b_pattern = "0011100111001110011100111001110011100"
+
+# Synchronization pattern for start of frame in both channels
+frame_pattern = gen_sync_signal("123456780", samples_per_symbol=8)
+
+# Telemetry information
+telemetry_values = 16
+telemetry_lines = 8
+telemetry_width = 44
+frame_size = telemetry_values * telemetry_lines
 
 
 def read_signal(path):
@@ -56,55 +82,28 @@ def amplitude_demod(rate, signal):
     return (scipy.signal.sosfilt(lowpass, signal ** 2).clip(0) * 2) ** 0.5
 
 
-def gen_sync_signal(pattern, samples_per_symbol):
+def data_from_signal(levels, pattern, samples_per_symbol):
     """
-    Generate a square synchronization signal from a pattern.
-
-    :param pattern: binary synchronization pattern.
-    :param samples_per_symbol: number of samples for each sync symbol.
-    :return: generated synchronization signal.
-    """
-    length = int(samples_per_symbol * len(pattern))
-    return np.array([
-        int((pattern + "0")[round(i / samples_per_symbol)])
-        for i in range(length)
-    ])
-
-
-def find_syncs(levels, sync_signal, samples_per_symbol):
-    """
-    Look for synchronization patterns inside a signal.
+    Extract data from a channel of an APT signal.
 
     :param levels: demodulated signal.
-    :param sync_signal: signal to look for.
+    :param pattern: channel synchronization pattern.
     :param samples_per_symbol: number of samples for each sync symbol.
-    :return: list of candidate synchronization times.
+    :return: decoded channel data.
     """
-    corr = correlate_template(levels, sync_signal)
-    peaks, _ = scipy.signal.find_peaks(
-        corr,
-        height=.5,
-        distance=samples_per_symbol * line_width,
-    )
-    return peaks
-
-
-def image_from_signal(levels, syncs, samples_per_symbol):
-    """
-    Reconstruct an image from an APT signal.
-
-    :param levels: demodulated signal.
-    :param syncs: synchronization times.
-    :param samples_per_symbol: number of samples for each sync symbol.
-    :return: decoded image.
-    """
-    first_sync = syncs[0]
-    last_sync = syncs[-1]
-
     line_width_samples = round(line_width * samples_per_symbol)
     sync_dist = round(line_width * samples_per_symbol * 2)
 
+    # Find sync times
+    sync_signal = gen_sync_signal(pattern, samples_per_symbol)
+    corr = correlate_template(levels, sync_signal)
+    syncs, _ = scipy.signal.find_peaks(corr, height=.5, distance=line_width_samples)
+
+    # Extract a data line for each sync
+    first_sync = syncs[0]
+    last_sync = syncs[-1]
     lines = int((last_sync - first_sync) / sync_dist)
+
     data = np.zeros((lines + 1, line_width), dtype="float")
 
     for sync in syncs:
@@ -112,7 +111,74 @@ def image_from_signal(levels, syncs, samples_per_symbol):
         line = levels[sync : sync + line_width_samples]
         data[y] = scipy.signal.resample(line, num=line_width)
 
-    return Image.fromarray((data / 6000 * 255).round().clip(0, 255).astype("uint8"))
+    return data
+
+
+def rescale_data(data, low, high):
+    return ((data - low) / (high - low) * 255).round().clip(0, 255)
+
+
+def read_telemetry(data):
+    """
+    Read frame telemetry and equalize intensities in an APT channel.
+
+    :param data: channel data.
+    :returns: index of the sensor in use in the received data.
+    """
+    # Align to frame starts
+    telemetry_data = data[:, -telemetry_width:].mean(axis=1)
+    corr = correlate_template(telemetry_data, frame_pattern)
+    frame_starts, _ = scipy.signal.find_peaks(corr, height=.5, distance=frame_size)
+
+    used_sensors = []
+    last_start = None
+
+    for frame_start in frame_starts:
+        if last_start is not None:
+            # Try salvaging damaged or partial frames
+            while last_start + frame_size < frame_start:
+                last_start += frame_size
+                data[last_start:last_start + frame_size] = rescale_data(
+                    data[last_start:last_start + frame_size],
+                    low_value,
+                    high_value,
+                )
+
+        frame_end = frame_start + frame_size
+        telemetry = (
+            telemetry_data[frame_start:frame_end]
+            .reshape((telemetry_values, telemetry_lines))
+            .mean(axis=1)
+        )
+
+        # Rescale telemetry and image data to be in the intensity range
+        high_value = telemetry[7]
+        low_value = telemetry[8]
+
+        telemetry = rescale_data(telemetry, low_value, high_value)
+        data[frame_start:frame_end] = rescale_data(
+            data[frame_start:frame_end],
+            low_value,
+            high_value,
+        )
+
+        # Find which sensor is used by comparing the last telemetry value
+        # to the initial intensity wedges
+        sensors = telemetry[:6]
+        used_sensor = np.abs(sensors - telemetry[15]).argmin()
+        used_sensors.append(used_sensor)
+
+        if last_start is None:
+            # Try salvaging initial partial frame
+            data[:frame_start] = rescale_data(
+                data[:frame_start],
+                low_value,
+                high_value,
+            )
+
+        last_start = frame_start
+
+    return np.bincount(used_sensors).argmax()
 
 
 def apt_decode(rate, signal):
@@ -131,11 +197,11 @@ def apt_decode(rate, signal):
     channels = []
 
     for channel, pattern in (("A", sync_a_pattern), ("B", sync_b_pattern)):
-        logging.info(f"Finding syncs for channel {channel}")
-        sync_signal = gen_sync_signal(pattern, samples_per_symbol)
-        syncs = find_syncs(levels, sync_signal, samples_per_symbol)
-
         logging.info(f"Decoding channel {channel}")
-        channels.append(image_from_signal(levels, syncs, samples_per_symbol))
+        data = data_from_signal(levels, pattern, samples_per_symbol)
+        sensor = read_telemetry(data)
+
+        logging.info(f"Channel {channel} is using sensor #{sensor}")
+        channels.append(Image.fromarray(data.astype("uint8")))
 
     return channels
