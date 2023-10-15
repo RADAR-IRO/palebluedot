@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image
 import scipy.signal
 import scipy.io
+import scipy.interpolate
 import logging
 from .xcorr import correlate_template
 
@@ -86,6 +87,9 @@ frame_pattern = gen_sync_signal("123456780", samples_per_symbol=8)
 
 # Number of telemetry values in each frame
 telemetry_values = 16
+
+# Target intensity values in telemetry
+telemetry_targets = np.array([0, 31, 61, 95, 127, 159, 191, 223, 255])
 
 # Number of lines for each telemetry value in each frame
 telemetry_lines = 8
@@ -163,8 +167,24 @@ def data_from_signal(levels, pattern, samples_per_symbol):
     return data
 
 
-def rescale_data(data, low, high):
-    return ((data - low) / (high - low) * 255).round().clip(0, 255)
+def rescale_data(data, initial, target):
+    """Interpolate data to map initial values onto target values."""
+    filter_initial = [initial[0]]
+    filter_target = [target[0]]
+
+    # Only keep increasing initial values
+    index = 1
+
+    while index < len(initial):
+        while index < len(initial) and initial[index] < filter_initial[-1]:
+            index += 1
+
+        filter_initial.append(initial[index])
+        filter_target.append(target[index])
+        index += 1
+
+    interp = scipy.interpolate.CubicSpline(filter_initial, filter_target)
+    return interp(data).round().clip(target[0], target[-1])
 
 
 def read_channel(data):
@@ -191,8 +211,8 @@ def read_channel(data):
                 last_start += frame_size
                 data[last_start:last_start + frame_size] = rescale_data(
                     data[last_start:last_start + frame_size],
-                    low_value,
-                    high_value,
+                    initial_values,
+                    telemetry_targets,
                 )
 
         frame_end = frame_start + frame_size
@@ -201,16 +221,13 @@ def read_channel(data):
             .reshape((telemetry_values, telemetry_lines))
             .mean(axis=1)
         )
+        initial_values = np.concatenate(([telemetry[8]], telemetry[:8]))
 
-        # Rescale telemetry and image data to be in the intensity range
-        high_value = telemetry[7]
-        low_value = telemetry[8]
-
-        telemetry = rescale_data(telemetry, low_value, high_value)
+        # Interpolate image data to be in the 0-255 intensity range
         data[frame_start:frame_end] = rescale_data(
             data[frame_start:frame_end],
-            low_value,
-            high_value,
+            initial_values,
+            telemetry_targets,
         )
 
         # Find which channel is used by comparing the last telemetry value
@@ -223,8 +240,8 @@ def read_channel(data):
             # Try salvaging initial partial frame
             data[:frame_start] = rescale_data(
                 data[:frame_start],
-                low_value,
-                high_value,
+                initial_values,
+                telemetry_targets,
             )
 
         last_start = frame_start
