@@ -16,6 +16,6 @@ def run():
     rate, signal = apt.read_signal(input_path)
     image_a, image_b = apt.apt_decode(rate, signal)
 
-    logging.info(f"Saving images to {base_path}_*.png")
-    image_a.save(base_path + "_a.png")
-    image_b.save(base_path + "_b.png")
+    logging.info(f"Saving images to {base_path}_*.tif")
+    image_a.save(base_path + "_a.tif")
+    image_b.save(base_path + "_b.tif")
