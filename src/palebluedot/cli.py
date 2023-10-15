@@ -1,4 +1,6 @@
 import logging
+import warnings
+import rasterio
 import argparse
 from datetime import datetime, timedelta
 from orbit_predictor.sources import NoradTLESource
@@ -43,6 +45,13 @@ def run():
         channel.image.save(image_path)
 
         if do_georef:
+            # Stop rasterio from complaining about our newly-created image
+            # not yet having georeferencing information
+            warnings.filterwarnings(
+                "ignore",
+                category=rasterio.errors.NotGeoreferencedWarning,
+            )
+
             duration = timedelta(seconds=len(signal) / rate)
             georef.compute(
                 image_path,
