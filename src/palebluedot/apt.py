@@ -33,18 +33,19 @@ def gen_sync_signal(pattern, samples_per_symbol):
 
 
 # Synchronization pattern for start of line in channel A
-sync_a_pattern = "0011001100110011001100110011000000000"
+sync_a_pattern = "000011001100110011001100110011000000000"
 
 # Synchronization pattern for start of line in channel B
-sync_b_pattern = "0011100111001110011100111001110011100"
+sync_b_pattern = "000011100111001110011100111001110011100"
 
 # Synchronization pattern for start of frame in both channels
 frame_pattern = gen_sync_signal("123456780", samples_per_symbol=8)
 
-# Telemetry information
+# Telemetry and metadata
 telemetry_values = 16
 telemetry_lines = 8
-telemetry_width = 44
+sync_width = len(sync_a_pattern) + 47
+telemetry_width = 45
 frame_size = telemetry_values * telemetry_lines
 
 
@@ -120,17 +121,17 @@ def rescale_data(data, low, high):
 
 def read_telemetry(data):
     """
-    Read frame telemetry and equalize intensities in an APT channel.
+    Read frame telemetry and produce an image from a decoded APT signal.
 
     :param data: channel data.
-    :returns: index of the sensor in use in the received data.
+    :returns: image data and ID of the channel in use in the image.
     """
     # Align to frame starts
     telemetry_data = data[:, -telemetry_width:].mean(axis=1)
     corr = correlate_template(telemetry_data, frame_pattern)
     frame_starts, _ = scipy.signal.find_peaks(corr, height=.5, distance=frame_size)
 
-    used_sensors = []
+    used_channels = []
     last_start = None
 
     for frame_start in frame_starts:
@@ -162,11 +163,11 @@ def read_telemetry(data):
             high_value,
         )
 
-        # Find which sensor is used by comparing the last telemetry value
+        # Find which channel is used by comparing the last telemetry value
         # to the initial intensity wedges
-        sensors = telemetry[:6]
-        used_sensor = np.abs(sensors - telemetry[15]).argmin()
-        used_sensors.append(used_sensor)
+        channels = telemetry[:6]
+        used_channel = np.abs(channels - telemetry[15]).argmin()
+        used_channels.append(used_channel)
 
         if last_start is None:
             # Try salvaging initial partial frame
@@ -178,7 +179,9 @@ def read_telemetry(data):
 
         last_start = frame_start
 
-    return np.bincount(used_sensors).argmax()
+    majority_channel = np.bincount(used_channels).argmax()
+    image = Image.fromarray(data[:, sync_width:-telemetry_width].astype("uint8"))
+    return majority_channel, image
 
 
 def apt_decode(rate, signal):
@@ -199,9 +202,9 @@ def apt_decode(rate, signal):
     for channel, pattern in (("A", sync_a_pattern), ("B", sync_b_pattern)):
         logging.info(f"Decoding channel {channel}")
         data = data_from_signal(levels, pattern, samples_per_symbol)
-        sensor = read_telemetry(data)
+        channel_id, image = read_telemetry(data)
 
-        logging.info(f"Channel {channel} is using sensor #{sensor}")
-        channels.append(Image.fromarray(data.astype("uint8")))
+        logging.info(f"Channel {channel} is #{channel_id}")
+        channels.append(image)
 
     return channels
