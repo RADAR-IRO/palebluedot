@@ -37,8 +37,9 @@ def run():
     channels = apt.apt_decode(rate, signal)
 
     base_path = args.input.removesuffix(".wav")
-    suffixes = ("_a.tif", "_b.tif")
-    logging.info(f"Saving images to {base_path}_*.tif")
+    sat_suffix = args.satellite.replace(" ", "").lower()
+    suffixes = (f"_{sat_suffix}_a.tif", f"_{sat_suffix}_b.tif")
+    logging.info(f"Saving images to {base_path}_{sat_suffix}_*.tif")
 
     for channel, suffix in zip(channels, suffixes):
         image_path = base_path + suffix
