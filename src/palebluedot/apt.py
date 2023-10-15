@@ -16,6 +16,9 @@ lines_per_second = 4
 # Carrier frequency used to transmit the signal
 carrier_frequency = 2400
 
+# Distance seen on either side of the satellite (in meters)
+span = 1_400_000
+
 
 def gen_sync_signal(pattern, samples_per_symbol):
     """
