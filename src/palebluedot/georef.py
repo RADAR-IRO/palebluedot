@@ -10,7 +10,7 @@ def position_at(satellite, time):
     return lat, lon
 
 
-def compute(image, satellite, start, end, span):
+def compute(image, satellite, start, end, span, desc=None):
     """
     Add georeferencing to an image captured by a weather satellite.
 
@@ -19,6 +19,7 @@ def compute(image, satellite, start, end, span):
     :param start: capture start date.
     :param end: capture end date.
     :param span: span of the image to the left and right (in meters).
+    :param desc: human-readable data description.
     """
     start_loc = position_at(satellite, start)
     after_start_loc = position_at(satellite, start + timedelta(seconds=5))
@@ -43,3 +44,4 @@ def compute(image, satellite, start, end, span):
             GroundControlPoint(image_file.height, 0, *end_left_loc),
             GroundControlPoint(image_file.height, image_file.width, *end_right_loc),
         ])
+        image_file.descriptions = (desc,)

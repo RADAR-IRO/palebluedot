@@ -1,4 +1,14 @@
-import math 
+"""
+Decoding algorithms for Automatic Picture Transmission (APT) mode.
+
+Sources:
+
+- <https://noaasis.noaa.gov/NOAASIS/pubs/Users_Guide-Building_Receive_Stations_March_2009.pdf>
+- <https://www.sigidwiki.com/wiki/Automatic_Picture_Transmission_(APT)>
+"""
+import math
+from dataclasses import dataclass
+from enum import Enum
 import numpy as np
 from PIL import Image
 import scipy.signal
@@ -7,17 +17,32 @@ import logging
 from .xcorr import correlate_template
 
 
-# Number of symbols in a complete APT line
-line_width = 1040
+# Human-readable names for the channels of the AVHRR instrument
+channels_names = {
+    0: "Channel 1 - Visible",
+    1: "Channel 2 - Near-Infrared",
+    2: "Channel 3A - Near-infrared",
+    3: "Channel 4 - Thermal",
+    4: "Channel 5 - Thermal",
+    5: "Channel 3B - Thermal",
+}
 
-# Number of APT lines transmitted every second
-lines_per_second = 4
+# Spectral range (in μm) of the channels of the AVHRR instrument
+channels_spectrums = {
+    0: (0.58, 0.68),
+    1: (0.725, 1.0),
+    2: (1.58, 1.64),
+    3: (10.3, 11.3),
+    4: (11.5, 12.5),
+    5: (3.55, 3.93),
+}
 
-# Carrier frequency used to transmit the signal
-carrier_frequency = 2400
 
-# Distance seen on either side of the satellite (in meters)
-span = 1_400_000
+@dataclass(frozen=True, slots=True)
+class Channel:
+    name: str
+    spectrum: tuple[float, float]
+    image: Image
 
 
 def gen_sync_signal(pattern, samples_per_symbol):
@@ -35,21 +60,41 @@ def gen_sync_signal(pattern, samples_per_symbol):
     ])
 
 
+# Number of symbols in a complete APT line
+line_width = 1040
+
+# Number of APT lines transmitted every second
+lines_per_second = 4
+
+# Carrier frequency used to transmit the signal
+carrier_frequency = 2400
+
+# Distance seen on either side of the satellite (in meters)
+span = 1_400_000
+
 # Synchronization pattern for start of line in channel A
 sync_a_pattern = "000011001100110011001100110011000000000"
 
 # Synchronization pattern for start of line in channel B
 sync_b_pattern = "000011100111001110011100111001110011100"
 
+# Total width of the line and time sync parts of a frame
+sync_width = len(sync_a_pattern) + 47
+
 # Synchronization pattern for start of frame in both channels
 frame_pattern = gen_sync_signal("123456780", samples_per_symbol=8)
 
-# Telemetry and metadata
+# Number of telemetry values in each frame
 telemetry_values = 16
+
+# Number of lines for each telemetry value in each frame
 telemetry_lines = 8
-sync_width = len(sync_a_pattern) + 47
-telemetry_width = 45
+
+# Total length of each frame in lines
 frame_size = telemetry_values * telemetry_lines
+
+# Width of a telemetry value in each line
+telemetry_width = 45
 
 
 def read_signal(path):
@@ -88,7 +133,7 @@ def amplitude_demod(rate, signal):
 
 def data_from_signal(levels, pattern, samples_per_symbol):
     """
-    Extract data from a channel of an APT signal.
+    Decode data from a channel of an APT signal.
 
     :param levels: demodulated signal.
     :param pattern: channel synchronization pattern.
@@ -122,13 +167,15 @@ def rescale_data(data, low, high):
     return ((data - low) / (high - low) * 255).round().clip(0, 255)
 
 
-def read_telemetry(data):
+def read_channel(data):
     """
-    Read frame telemetry and produce an image from a decoded APT signal.
+    Read frame telemetry and image from a decoded APT channel.
 
-    :param data: channel data.
-    :returns: image data and ID of the channel in use in the image.
+    :param data: decoded channel data.
+    :returns: structured telemetry and image information.
     """
+    data = data.copy()
+
     # Align to frame starts
     telemetry_data = data[:, -telemetry_width:].mean(axis=1)
     corr = correlate_template(telemetry_data, frame_pattern)
@@ -183,8 +230,11 @@ def read_telemetry(data):
         last_start = frame_start
 
     majority_channel = np.bincount(used_channels).argmax()
+    name = channels_names[majority_channel]
+    spectrum = channels_spectrums[majority_channel]
     image = Image.fromarray(data[:, sync_width:-telemetry_width].astype("uint8"))
-    return majority_channel, image
+
+    return Channel(f"{name} ({spectrum[0]} - {spectrum[1]} μm)", spectrum, image)
 
 
 def apt_decode(rate, signal):
@@ -193,7 +243,7 @@ def apt_decode(rate, signal):
 
     :param rate: signal sampling rate.
     :param signal: list of samples.
-    :return: two images, one for each channel.
+    :return: information on the two decoded channels.
     """
     samples_per_symbol = rate / (line_width * lines_per_second)
 
@@ -202,12 +252,11 @@ def apt_decode(rate, signal):
 
     channels = []
 
-    for channel, pattern in (("A", sync_a_pattern), ("B", sync_b_pattern)):
-        logging.info(f"Decoding channel {channel}")
+    for channel_id, pattern in (("A", sync_a_pattern), ("B", sync_b_pattern)):
+        logging.info(f"Decoding channel {channel_id}")
         data = data_from_signal(levels, pattern, samples_per_symbol)
-        channel_id, image = read_telemetry(data)
-
-        logging.info(f"Channel {channel} is #{channel_id}")
-        channels.append(image)
+        channel = read_channel(data)
+        channels.append(channel)
+        logging.info(f"Channel {channel_id} is {channel.name}")
 
     return channels

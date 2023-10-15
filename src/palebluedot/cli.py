@@ -32,16 +32,23 @@ def run():
 
     logging.info("Loading file")
     rate, signal = apt.read_signal(args.input)
-    images = apt.apt_decode(rate, signal)
+    channels = apt.apt_decode(rate, signal)
 
     base_path = args.input.removesuffix(".wav")
     suffixes = ("_a.tif", "_b.tif")
     logging.info(f"Saving images to {base_path}_*.tif")
 
-    for image, suffix in zip(images, suffixes):
+    for channel, suffix in zip(channels, suffixes):
         image_path = base_path + suffix
-        image.save(image_path)
+        channel.image.save(image_path)
 
         if do_georef:
             duration = timedelta(seconds=len(signal) / rate)
-            georef.compute(image_path, satellite, time, time + duration, apt.span)
+            georef.compute(
+                image_path,
+                satellite,
+                time,
+                time + duration,
+                apt.span,
+                channel.name,
+            )
