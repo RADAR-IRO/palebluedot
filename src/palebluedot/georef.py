@@ -38,10 +38,12 @@ def compute(image, satellite, start, end, span, desc=None):
 
     with rasterio.open(image, "r+") as image_file:
         image_file.crs = "EPSG:4326"
-        image_file.transform = from_gcps([
-            GroundControlPoint(0, 0, *start_left_loc),
-            GroundControlPoint(0, image_file.width, *start_right_loc),
-            GroundControlPoint(image_file.height, 0, *end_left_loc),
-            GroundControlPoint(image_file.height, image_file.width, *end_right_loc),
-        ])
+        image_file.transform = from_gcps(
+            [
+                GroundControlPoint(0, 0, *start_left_loc),
+                GroundControlPoint(0, image_file.width, *start_right_loc),
+                GroundControlPoint(image_file.height, 0, *end_left_loc),
+                GroundControlPoint(image_file.height, image_file.width, *end_right_loc),
+            ]
+        )
         image_file.descriptions = (desc,)

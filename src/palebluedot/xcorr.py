@@ -29,7 +29,7 @@ def _xcorr_padzeros(a, b, shift, method):
         b = _pad_zeros(b, dif // 2)
     else:
         a = _pad_zeros(a, -dif // 2)
-    return scipy.signal.correlate(a, b, 'valid', method)
+    return scipy.signal.correlate(a, b, "valid", method)
 
 
 def _xcorr_slice(a, b, shift, method):
@@ -42,8 +42,8 @@ def _xcorr_slice(a, b, shift, method):
     if shift > mid:
         # Such a large shift is not possible without zero padding
         return _xcorr_padzeros(a, b, shift, method)
-    cc = scipy.signal.correlate(a, b, 'full', method)
-    return cc[mid - shift:mid + shift + len(cc) % 2]
+    cc = scipy.signal.correlate(a, b, "full", method)
+    return cc[mid - shift : mid + shift + len(cc) % 2]
 
 
 def get_lags(cc):
@@ -59,8 +59,7 @@ def get_lags(cc):
     return np.arange(len(cc)) - mid
 
 
-def correlate_maxlag(a, b, maxlag, demean=True, normalize='naive',
-                     method='auto'):
+def correlate_maxlag(a, b, maxlag, demean=True, normalize="naive", method="auto"):
     """
     Cross-correlation of two signals up to a specified maximal lag.
 
@@ -89,10 +88,10 @@ def correlate_maxlag(a, b, maxlag, demean=True, normalize='naive',
         a = a - np.mean(a)
         b = b - np.mean(b)
     # choose the usually faster xcorr function for each method
-    _xcorr = _xcorr_padzeros if method == 'direct' else _xcorr_slice
+    _xcorr = _xcorr_padzeros if method == "direct" else _xcorr_slice
     cc = _xcorr(a, b, maxlag, method)
-    if normalize == 'naive':
-        norm = (np.sum(a ** 2) * np.sum(b ** 2)) ** 0.5
+    if normalize == "naive":
+        norm = (np.sum(a**2) * np.sum(b**2)) ** 0.5
         if norm <= np.finfo(float).eps:
             # norm is zero
             # => cross-correlation function will have only zeros
@@ -112,13 +111,15 @@ def _window_sum(data, window_len):
     # in-place equivalent of
     # window_sum = window_sum[window_len:] - window_sum[:-window_len]
     # return window_sum
-    np.subtract(window_sum[window_len:], window_sum[:-window_len],
-                out=window_sum[:-window_len])
+    np.subtract(
+        window_sum[window_len:], window_sum[:-window_len], out=window_sum[:-window_len]
+    )
     return window_sum[:-window_len]
 
 
-def correlate_template(data, template, mode='valid', demean=True,
-                       normalize='full', method='auto'):
+def correlate_template(
+    data, template, mode="valid", demean=True, normalize="full", method="auto"
+):
     """
     Normalized cross-correlation of two signals with specified mode.
 
@@ -153,25 +154,25 @@ def correlate_template(data, template, mode='valid', demean=True,
     template = np.asarray(template)
     lent = len(template)
     if len(data) < lent:
-        raise ValueError('Data must not be shorter than template.')
+        raise ValueError("Data must not be shorter than template.")
     if demean:
         template = template - np.mean(template)
-        if normalize != 'full':
+        if normalize != "full":
             data = data - np.mean(data)
     cc = scipy.signal.correlate(data, template, mode, method)
     if normalize is not None:
-        tnorm = np.sum(template ** 2)
-        if normalize == 'naive':
-            norm = (tnorm * np.sum(data ** 2)) ** 0.5
+        tnorm = np.sum(template**2)
+        if normalize == "naive":
+            norm = (tnorm * np.sum(data**2)) ** 0.5
             if norm <= np.finfo(float).eps:
                 cc[:] = 0
             elif cc.dtype == float:
                 cc /= norm
             else:
                 cc = cc / norm
-        elif normalize == 'full':
+        elif normalize == "full":
             pad = len(cc) - len(data) + lent
-            if mode == 'same':
+            if mode == "same":
                 pad1, pad2 = (pad + 2) // 2, (pad - 1) // 2
             else:
                 pad1, pad2 = (pad + 1) // 2, pad // 2
@@ -189,9 +190,9 @@ def correlate_template(data, template, mode='valid', demean=True,
                     norm /= lent
                 else:
                     norm = norm / lent
-                np.subtract(_window_sum(data ** 2, lent), norm, out=norm)
+                np.subtract(_window_sum(data**2, lent), norm, out=norm)
             else:
-                norm = _window_sum(data ** 2, lent)
+                norm = _window_sum(data**2, lent)
             norm *= tnorm
             if norm.dtype == float:
                 np.sqrt(norm, out=norm)
@@ -225,17 +226,17 @@ def _test():
     ax1 = plt.subplot(grid[0, 0:])
     ax2 = plt.subplot(grid[1, 0])
     ax3 = plt.subplot(grid[1, 1], sharey=ax2)
-    ax1.plot(np.arange(len(a)), a, label='signal a')
-    ax1.plot(np.arange(len(b)) + start, b, label='signal b')
+    ax1.plot(np.arange(len(a)), a, label="signal a")
+    ax1.plot(np.arange(len(b)) + start, b, label="signal b")
     ax2.plot(get_lags(cc1), cc1)
     ax3.plot(cc2)
     ax1.legend(loc=3)
-    kw = dict(xy=(0.05, 0.95), xycoords='axes fraction', va='top')
-    ax2.annotate('correlate_maxlag(a, b, {})'.format(maxlag), **kw)
-    ax3.annotate('correlate_template(a, b)', **kw)
-    plt.savefig('xcorr_example.png')
+    kw = dict(xy=(0.05, 0.95), xycoords="axes fraction", va="top")
+    ax2.annotate("correlate_maxlag(a, b, {})".format(maxlag), **kw)
+    ax3.annotate("correlate_template(a, b)", **kw)
+    plt.savefig("xcorr_example.png")
     plt.show()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     _test()

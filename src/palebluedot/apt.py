@@ -6,6 +6,7 @@ Sources:
 - <https://noaasis.noaa.gov/NOAASIS/pubs/Users_Guide-Building_Receive_Stations_March_2009.pdf>
 - <https://www.sigidwiki.com/wiki/Automatic_Picture_Transmission_(APT)>
 """
+
 import math
 from dataclasses import dataclass
 from enum import Enum
@@ -55,10 +56,12 @@ def gen_sync_signal(pattern, samples_per_symbol):
     :return: generated synchronization signal.
     """
     length = int(samples_per_symbol * len(pattern))
-    return np.array([
-        int((pattern + "0")[math.floor(i / samples_per_symbol)])
-        for i in range(length)
-    ])
+    return np.array(
+        [
+            int((pattern + "0")[math.floor(i / samples_per_symbol)])
+            for i in range(length)
+        ]
+    )
 
 
 # Number of symbols in a complete APT line
@@ -132,7 +135,7 @@ def amplitude_demod(rate, signal):
         output="sos",
         fs=rate,
     )
-    return (scipy.signal.sosfilt(lowpass, signal ** 2).clip(0) * 2) ** 0.5
+    return (scipy.signal.sosfilt(lowpass, signal**2).clip(0) * 2) ** 0.5
 
 
 def data_from_signal(levels, pattern, samples_per_symbol):
@@ -150,7 +153,7 @@ def data_from_signal(levels, pattern, samples_per_symbol):
     # Find sync times
     sync_signal = gen_sync_signal(pattern, samples_per_symbol)
     corr = correlate_template(levels, sync_signal)
-    syncs, _ = scipy.signal.find_peaks(corr, height=.5, distance=line_width_samples)
+    syncs, _ = scipy.signal.find_peaks(corr, height=0.5, distance=line_width_samples)
 
     # Extract a data line for each sync
     first_sync = syncs[0]
@@ -199,7 +202,7 @@ def read_channel(data):
     # Align to frame starts
     telemetry_data = data[:, -telemetry_width:].mean(axis=1)
     corr = correlate_template(telemetry_data, frame_pattern)
-    frame_starts, _ = scipy.signal.find_peaks(corr, height=.5, distance=frame_size)
+    frame_starts, _ = scipy.signal.find_peaks(corr, height=0.5, distance=frame_size)
 
     used_channels = []
     last_start = None
@@ -209,8 +212,8 @@ def read_channel(data):
             # Try salvaging damaged or partial frames
             while last_start + frame_size < frame_start:
                 last_start += frame_size
-                data[last_start:last_start + frame_size] = rescale_data(
-                    data[last_start:last_start + frame_size],
+                data[last_start : last_start + frame_size] = rescale_data(
+                    data[last_start : last_start + frame_size],
                     initial_values,
                     telemetry_targets,
                 )
