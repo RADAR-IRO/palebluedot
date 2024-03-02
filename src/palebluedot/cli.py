@@ -18,7 +18,7 @@ def run():
     parser.add_argument("-d", "--tle-file")
     args = parser.parse_args()
 
-    logging.basicConfig(format='[%(asctime)s] %(message)s', level=logging.INFO)
+    logging.basicConfig(format="[%(asctime)s] %(message)s", level=logging.INFO)
 
     if args.time and args.tle_file and args.satellite:
         time = datetime.fromisoformat(args.time)
